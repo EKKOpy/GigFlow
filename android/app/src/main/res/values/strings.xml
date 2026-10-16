@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">GigFlow Driver</string>
+    <string name="service_label">Asistente de ofertas de GigFlow</string>
+    <string name="service_description">Lee las tarjetas de ofertas mostradas por las aplicaciones de transporte y entrega, y las evalúa según tus reglas de GigFlow. Opcionalmente, toca aceptar o rechazar cuando la automatización está habilitada. GigFlow solo actúa dentro de las aplicaciones de conductor que elijas, nunca toca otras aplicaciones y no realiza ninguna acción a menos que lo habilites.</string>
+    <string name="service_summary">Evalúa las ofertas de trabajo en pantalla</string>
+
+    <!-- Se muestra en la interfaz de Asistencia. El servicio de accesibilidad filtra por la
+         lista literal en res/xml/accessibility_service_config.xml — mantén ambos
+         sincronizados al añadir o eliminar aplicaciones. -->
+    <string-array name="watched_packages">
+        <item>com.uber.driver</item>
+        <item>com.lyft.driver</item>
+        <item>com.doordash.driverapp</item>
+        <item>com.instacart.shopper</item>
+        <item>com.amazon.rabbit</item>
+        <item>com.walmart.sparkdriver</item>
+        <item>com.wolt.courierapp</item>
+        <item>com.logistics.rider.foodora</item>
+    </string-array>
+</resources>

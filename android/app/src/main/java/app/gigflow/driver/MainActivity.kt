@@ -1,0 +1,151 @@
+package app.gigflow.driver
+
+import android.app.Activity
+import android.graphics.Color
+import android.os.Build
+import android.os.Bundle
+import android.view.View
+import android.view.WindowInsets
+import android.view.WindowInsetsController
+import android.view.ViewGroup
+import android.widget.FrameLayout
+import app.gigflow.driver.ui.*
+
+/**
+ * GigFlow Driver — aplicación complementaria estilo iOS.
+ *
+ * Cinco pestañas alojadas en una sola actividad (sin fragmentos, sin dependencias):
+ *   Panel · Ofertas · Rastrear · Horario · Asistente
+ *
+ * El servicio de accesibilidad se ejecuta independientemente de esta interfaz — ver
+ * GigFlowAccessibilityService.
+ */
+class MainActivity : Activity() {
+
+    companion object {
+        const val REQ_LOCATION = 7
+    }
+
+    private lateinit var settings: SettingsRepository
+    private lateinit var db: LocalDb
+    private lateinit var p: Ios.Palette
+
+    private lateinit var dashboard: DashboardScreen
+    private lateinit var offers: OffersScreen
+    private lateinit var track: TrackScreen
+    private lateinit var plan: PlanScreen
+    private lateinit var assist: AssistScreen
+
+    private lateinit var content: FrameLayout
+    private lateinit var tabBar: TabBar
+    private var current = 0
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        settings = SettingsRepository(this)
+        db = LocalDb(this)
+        p = Ios.palette(this)
+
+        dashboard = DashboardScreen(this, p, db, settings)
+        offers = OffersScreen(this, p, settings)
+        track = TrackScreen(this, p, db, settings)
+        plan = PlanScreen(this, p, db, settings)
+        assist = AssistScreen(this, p, settings, db)
+
+        content = FrameLayout(this)
+        tabBar = TabBar(this, p)
+        tabBar.setTabs(listOf(
+            TabBar.Tab("house", "Inicio"),
+            TabBar.Tab("tag", "Ofertas"),
+            TabBar.Tab("plus.circle", "Rastrear"),
+            TabBar.Tab("calendar", "Horario"),
+            TabBar.Tab("slider", "Asistente"),
+        ))
+        tabBar.onSelect = { show(it) }
+
+        val root = FrameLayout(this).apply {
+            addView(content, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            addView(tabBar, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            setBackgroundColor(p.groupedBg)
+        }
+        setContentView(root)
+
+        // De borde a borde (edge-to-edge): el contenido fluye bajo la barra de estado; la barra de navegación se oculta
+        // y solo reaparece al deslizar desde la parte inferior (transitoria, nunca cambia nuestro tamaño).
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= 30) {
+            window.setDecorFitsSystemWindows(false)
+            window.insetsController?.let { ctl ->
+                ctl.hide(WindowInsets.Type.navigationBars())
+                ctl.systemBarsBehavior =
+                    WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+            root.setOnApplyWindowInsetsListener { _, insets ->
+                val sys = insets.getInsets(WindowInsets.Type.systemBars())
+                content.setPadding(0, sys.top, 0, 0)
+                tabBar.setPadding(0, 0, 0, sys.bottom)
+                insets
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility =
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        }
+
+        show(0)
+        UpdateChecker.promptIfNewer(this, p)
+    }
+
+    private fun show(i: Int) {
+        current = i
+        val target = when (i) {
+            0 -> dashboard.screen
+            1 -> offers.screen
+            2 -> track.screen
+            3 -> plan.screen
+            else -> assist.screen
+        }
+        if (target.parent == content) return
+        content.removeAllViews()
+        target.alpha = 0f
+        content.addView(target, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        target.animate().alpha(1f).setDuration(Ios.ANIM_FAST).start()
+        refresh(i)
+    }
+
+    private fun refresh(i: Int): Unit {
+        Ios.hapticsEnabled = settings.haptics
+        return when (i) {
+            0 -> dashboard.refresh()
+            1 -> offers.refresh()
+            2 -> track.refresh()
+            3 -> plan.refresh()
+            else -> assist.refresh()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::tabBar.isInitialized) refresh(current)
+    }
+
+    /** Resultado del permiso de ubicación — concedido significa que el usuario tocó Iniciar turno. */
+    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<out String>, grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_LOCATION) {
+            if (MileageTracker.hasLocationPermission(this)) {
+                startForegroundService(MileageTracker.startIntent(this))
+            }
+            if (::track.isInitialized) track.refresh()
+        }
+    }
+}
